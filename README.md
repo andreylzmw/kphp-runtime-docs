@@ -1,7 +1,7 @@
 # Модификация рантайма kphp
 
 ## Цель
-Я хочу рассказать про добавление новых функций в runtime KPHP. 
+Я расскажу про добавление новых функций в runtime KPHP. Точнее про тернистую дорогу на пути.
 
 ## План
 1. Подготовка
@@ -15,11 +15,11 @@
     - php тесты
 4. pull_request
 
-## Подготовка
+## 1. Подготовка
 
 [Устанавливаем kphp из репозитория](https://vkcom.github.io/kphp/kphp-internals/developing-and-extending-kphp/compiling-kphp-from-sources.html)
 
-## runtime
+## 2. runtime
 ### Добавление функций
 В качестве примера возьмем ситуацию, когда нам нужно реализовать функцию `mb_check_encoding` из php. Первым делом идем в доки:
 ![Снимок экрана 2023-06-02 в 01 39 38](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/0177f3fd-c393-4fe3-85c6-45acbf46663b)
@@ -114,5 +114,42 @@ bool mb_check_encoding(const char *value, const char *encoding) {
 2. Добавить код с интерфейсом (h)
 3. Добавить код с реализацией (cpp)
 4. Добавить файлы в сборку (cmake)
+
+#### (2.20/4). Добавить php-интерфейс (txt)
+Для того, чтобы правильно перенести php интерфейс, нужно знать про типы в kphp [тут](https://vkcom.github.io/kphp/kphp-language/static-type-system/kphp-type-system.html)
+![kphp-types](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/34deba9b-61c7-4e20-bbc5-6418c69455fd)
+
+Итак, открываем файл `builtin-functions/_functions.txt`. И в самый конец добавляем переделанный интерфейс из php. Например в php mb_check_encoding имеет следующий интерфейс:
+```php
+function mb_check_encoding(array|string|null $value = null, ?string $encoding = null): bool
+```
+в kphp это будет:
+```php
+function mb_check_encoding(array|string|null $value = null, ?string $encoding = null): bool;
+```
+
+Аналогично для mb_convert_encoding в php:
+```php
+function mb_convert_encoding(array|string $string, string $to_encoding, array|string|null $from_encoding = null): array|string|false
+```
+в kphp:
+```php
+function mb_convert_encoding(array|string $string, string $to_encoding, array|string|null $from_encoding = null): array|string|false;
+```
+Вот и все, теперь нужно добавить код.
+
+#### (2.40/4). Добавить код с интерфейсом (h)
+Все модули рантайма находятся в папке `runtime`. Наши функции являются частью расширения `mbstring` для php. Оказывается уже есть файлик `mbstring.cpp`. Давайте откроем и посмотрим:
+![Снимок экрана 2023-06-02 в 22 25 11](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/223d3e0a-dab2-4794-b2f1-b234bbdd2f75)
+
+Хм, функция уже реализована, но только для двух кодировок (UTF-8 и Windows-1251). Ничего страшного, теперь мы покажем им все кодировки! (о последсвиях расскажу в конце). Кстати почему название функции начинается с `f$`? Так парсер понимает какие функции нужно искать в интерфейсах (см шаг (2.20/4).  Добавить php-интерфейс (txt)). Видим, что входными параметрами являются переменные типа `string`. Ловушка! Это не string из I/O! Это string из kphp!
+
+
+
+#### (2.60/4). Добавить код с реализацией (cpp)
+
+#### (2.80/4). Добавить файлы в сборку (cmake)
+
+## 
 
 
