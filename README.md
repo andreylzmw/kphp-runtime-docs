@@ -148,12 +148,12 @@ function mb_convert_encoding(array|string $string, string $to_encoding, array|st
 ![Снимок экрана 2023-06-02 в 22 25 11](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/223d3e0a-dab2-4794-b2f1-b234bbdd2f75)
 
 Хм, функция уже реализована, но все работает только для двух кодировок (UTF-8 и Windows-1251). Ничего страшного, теперь мы покажем им все кодировки! (о последсвиях расскажу в конце). Dидим, что входными параметрами являются переменные типа `string`. Ловушка! Это не string из I/O! Это string из kphp! Где про нее почитать? Все типы включаются из `runtime/kphp_core.h`. Смотрим внутри: ![Снимок экрана 2023-06-02 в 22 53 46](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/ef3c256a-8b39-4dd6-99ef-4e0fc279dbdb). Поменяем интерфейс `mb_check_encoding`:
-```c
+```cpp
 bool f$mb_check_encoding(const string &value, const string &encoding);
 ```
 
 аналогично для `mb_convert_encoding`:
-```c
+```cpp
 string f$mb_convert_encoding(const string &str, const string &to_encoding, const string &from_encoding);
 ```
 Отлично, идем дальше.
@@ -161,20 +161,20 @@ string f$mb_convert_encoding(const string &str, const string &to_encoding, const
 #### Добавить код с реализацией (cpp)
 
 В предыдущем шаге мы нашли все типы, так что можно посмотреть в `string.inl` и узнать, как доставть из нее `const char *`, который нам уже знаком или как создать string из `const char *`. Теперь перепишем функцию `mb_check_encoding`:
-```с
+```сpp
 bool f$mb_check_encoding(const string &value, const string &encoding) {
 	const char *c_encoding = encoding.val().c_str();
 	const char *c_value = value.to_string().c_str();
-	...
+	// ...
 }
 ```
 Теперь осталось сделать аналогичное для функции `mb_convert_encoding`:
-```с
+```сpp
 string f$mb_convert_encoding(const string &str, const string &to_encoding, const string &from_encoding) {
 	const char *c_string = s.c_str();
 	const char *c_to_encoding = to_encoding.c_str();
 	const char *c_from_encoding = from_encoding.c_str();
-	...
+	// ...
 	return string((const char*)ret->val, ret->len);
 }
 ```
