@@ -7,19 +7,20 @@
 1. Подготовка
 2. runtime
     - добавление функций
-    - подключение библиотек
+    - типы
     - флаги
+    - подключение библиотеки
     - изменение подключаемых библиотек
 3. Тесты
     - cpp тесты
     - php тесты
 4. pull_request
 
-## 1. Подготовка
+## Подготовка
 
 [Устанавливаем kphp из репозитория](https://vkcom.github.io/kphp/kphp-internals/developing-and-extending-kphp/compiling-kphp-from-sources.html)
 
-## 2. runtime
+## runtime
 ### Добавление функций
 В качестве примера возьмем ситуацию, когда нам нужно реализовать функцию `mb_check_encoding` из php. Первым делом идем в доки:
 ![Снимок экрана 2023-06-02 в 01 39 38](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/0177f3fd-c393-4fe3-85c6-45acbf46663b)
@@ -115,7 +116,7 @@ bool mb_check_encoding(const char *value, const char *encoding) {
 3. Добавить код с реализацией (cpp)
 4. Добавить файлы в сборку (cmake)
 
-#### (2.20/4). Добавить php-интерфейс (txt)
+#### Добавить php-интерфейс (txt)
 Для того, чтобы правильно перенести php интерфейс, нужно знать про типы в kphp [тут](https://vkcom.github.io/kphp/kphp-language/static-type-system/kphp-type-system.html)
 ![kphp-types](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/34deba9b-61c7-4e20-bbc5-6418c69455fd)
 
@@ -138,7 +139,7 @@ function mb_convert_encoding(array|string $string, string $to_encoding, array|st
 ```
 Вот и все, теперь нужно добавить код.
 
-#### (2.40/4). Добавить код с интерфейсом (h)
+#### Добавить код с интерфейсом (h)
 Все модули рантайма находятся в папке `runtime`. Наши функции являются частью расширения `mbstring` для php. Оказывается уже есть файлик `mbstring.h`. Давайте откроем и посмотрим:
 ![Снимок экрана 2023-06-02 в 23 27 45](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/05f5d197-ed8b-46ab-a3cf-064152d5c3b9)
 Оказывается mb_check_encoding уже реализована, странно.
@@ -157,7 +158,7 @@ string f$mb_convert_encoding(const string &str, const string &to_encoding, const
 ```
 Отлично, идем дальше.
 
-#### (2.60/4). Добавить код с реализацией (cpp)
+#### Добавить код с реализацией (cpp)
 
 В предыдущем шаге мы нашли все типы, так что можно посмотреть в `string.inl` и узнать, как доставть из нее `const char *`, который нам уже знаком или как создать string из `const char *`. Теперь перепишем функцию `mb_check_encoding`:
 ```с
@@ -178,7 +179,7 @@ string f$mb_convert_encoding(const string &str, const string &to_encoding, const
 }
 ```
 
-#### (2.80/4). Добавить файлы в сборку (cmake)
+#### Добавить файлы в сборку (cmake)
 Идем в `runtime/runtime.cmake`. Все cpp должны оказаться в `KPHP_RUNTIME_SOURCES`. Но для удобства можно группировать их. В нашем случае `mbstring.cpp` уже включен в сборку. Но, можно сделать по другому:
 ```cmake
 prepend(KPHP_RUNTIME_MBSTRING_SOURCES
@@ -212,5 +213,9 @@ echo mb_check_encoding("Hello World", "UTF-8);
 ### !!! Важно !!!
 Не все так просто. Мы очень быстро их добавили (лишь бы работало). Теперь когда мы убедились, что все работает, но нужны другие типы -`mb_check_enсoding` в качестве параметра данных может принимать массив строк или `null`, нужно это придусмотреть. Причем поведение функции должно быть идентично php (дажа если поведение в php нелогично). Аналогично для `mb_convert_encoding`, которая может и принимать и возвращать строку или массив строк.
 
+Также `mbstring` это расширение kphp, которое в `php-src`, собирается и подключается только если указан определенный флаг при компиляции. Нужно сделать и это.
 
+### Типы
+
+### Флаги
 
