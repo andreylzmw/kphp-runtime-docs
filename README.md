@@ -139,17 +139,78 @@ function mb_convert_encoding(array|string $string, string $to_encoding, array|st
 Вот и все, теперь нужно добавить код.
 
 #### (2.40/4). Добавить код с интерфейсом (h)
-Все модули рантайма находятся в папке `runtime`. Наши функции являются частью расширения `mbstring` для php. Оказывается уже есть файлик `mbstring.cpp`. Давайте откроем и посмотрим:
+Все модули рантайма находятся в папке `runtime`. Наши функции являются частью расширения `mbstring` для php. Оказывается уже есть файлик `mbstring.h`. Давайте откроем и посмотрим:
+![Снимок экрана 2023-06-02 в 23 27 45](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/05f5d197-ed8b-46ab-a3cf-064152d5c3b9)
+Оказывается mb_check_encoding уже реализована, странно.
+
+Оказывается mb_check_encoding уже реализована, странно. Посмотрим cpp файл:
 ![Снимок экрана 2023-06-02 в 22 25 11](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/223d3e0a-dab2-4794-b2f1-b234bbdd2f75)
 
-Хм, функция уже реализована, но только для двух кодировок (UTF-8 и Windows-1251). Ничего страшного, теперь мы покажем им все кодировки! (о последсвиях расскажу в конце). Кстати почему название функции начинается с `f$`? Так парсер понимает какие функции нужно искать в интерфейсах (см шаг (2.20/4).  Добавить php-интерфейс (txt)). Видим, что входными параметрами являются переменные типа `string`. Ловушка! Это не string из I/O! Это string из kphp!
+Хм, функция уже реализована, но все работает только для двух кодировок (UTF-8 и Windows-1251). Ничего страшного, теперь мы покажем им все кодировки! (о последсвиях расскажу в конце). Dидим, что входными параметрами являются переменные типа `string`. Ловушка! Это не string из I/O! Это string из kphp! Где про нее почитать? Все типы включаются из `runtime/kphp_core.h`. Смотрим внутри: ![Снимок экрана 2023-06-02 в 22 53 46](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/ef3c256a-8b39-4dd6-99ef-4e0fc279dbdb). Поменяем интерфейс `mb_check_encoding`:
+```c
+bool f$mb_check_encoding(const string &value, const string &encoding);
+```
 
-
+аналогично для `mb_convert_encoding`:
+```c
+string f$mb_convert_encoding(const string &str, const string &to_encoding, const string &from_encoding);
+```
+Отлично, идем дальше.
 
 #### (2.60/4). Добавить код с реализацией (cpp)
 
-#### (2.80/4). Добавить файлы в сборку (cmake)
+В предыдущем шаге мы нашли все типы, так что можно посмотреть в `string.inl` и узнать, как доставть из нее `const char *`, который нам уже знаком или как создать string из `const char *`. Теперь перепишем функцию `mb_check_encoding`:
+```с
+bool f$mb_check_encoding(const string &value, const string &encoding) {
+	const char *c_encoding = encoding.val().c_str();
+	const char *c_value = value.to_string().c_str();
+	...
+}
+```
+Теперь осталось сделать аналогичное для функции `mb_convert_encoding`:
+```с
+string f$mb_convert_encoding(const string &str, const string &to_encoding, const string &from_encoding) {
+	const char *c_string = s.c_str();
+	const char *c_to_encoding = to_encoding.c_str();
+	const char *c_from_encoding = from_encoding.c_str();
+	...
+	return string((const char*)ret->val, ret->len);
+}
+```
 
-## 
+#### (2.80/4). Добавить файлы в сборку (cmake)
+Идем в `runtime/runtime.cmake`. Все cpp должны оказаться в `KPHP_RUNTIME_SOURCES`. Но для удобства можно группировать их. В нашем случае `mbstring.cpp` уже включен в сборку. Но, можно сделать по другому:
+```cmake
+prepend(KPHP_RUNTIME_MBSTRING_SOURCES
+        mbstring.cpp)
+```
+тогда можно в `KPHP_RUNTIME_SOURCES` включать не отдельный файл `mbstring.cpp`, а `KPHP_RUNTIME_MBSTRING_SOURCES`:
+```cmake
+prepend(KPHP_RUNTIME_SOURCES ${BASE_DIR}/runtime/
+        ${KPHP_RUNTIME_MBSTRING_SOURCES}
+	...
+```
+
+Фух, теперь точно все. Билдим!
+```
+mkdir build && cd build && cmake .. -DDOWNNLOAD_MISSING_LIBRARIES=On && make -j$(nproc)
+```
+
+Создаем test.php:
+```php
+echo mb_check_encoding("Hello World", "UTF-8);
+```
+
+Запускаем!
+```
+./objs/bin/kphp2cpp -M test.php && ./kphp_out/cli
+```
+!`-M` это cli-mode, чтобы не запускать http сервер.
+
+Ура! Мы успешно добавили новые функции в рантайм kphp!
+
+### Ньюансы
+Не все так просто. Мы очень быстро их добавили (лишь бы работало). Теперь когда мы убедились, что все работает, нужно переделать некоторые моменты:
+
 
 
