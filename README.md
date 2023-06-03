@@ -163,8 +163,8 @@ string f$mb_convert_encoding(const string &str, const string &to_encoding, const
 В предыдущем шаге мы нашли все типы, так что можно посмотреть в `string.inl` и узнать, как доставть из нее `const char *`, который нам уже знаком или как создать string из `const char *`. Теперь перепишем функцию `mb_check_encoding`:
 ```сpp
 bool f$mb_check_encoding(const string &value, const string &encoding) {
-	const char *c_encoding = encoding.val().c_str();
-	const char *c_value = value.to_string().c_str();
+	const char *c_encoding = encoding.c_str();
+	const char *c_value = value.c_str();
 	// ...
 }
 ```
@@ -192,6 +192,12 @@ prepend(KPHP_RUNTIME_SOURCES ${BASE_DIR}/runtime/
 	...
 ```
 
+### Подключение библиотеки
+Чтобы kphp мог линковать нужную нам библиотеку `libmbfl` нужно добавить ее (без `lib` в начале) в `external_static_libs` в `compiler/compiler-settings.cpp`:
+```cpp
+std::vector<vk::string_view> external_static_libs{..., "mbfl"};
+```
+
 Фух, теперь точно все. Билдим!
 ```
 mkdir build && cd build && cmake .. -DDOWNNLOAD_MISSING_LIBRARIES=On && make -j$(nproc)
@@ -199,23 +205,127 @@ mkdir build && cd build && cmake .. -DDOWNNLOAD_MISSING_LIBRARIES=On && make -j$
 
 Создаем test.php:
 ```php
-echo mb_check_encoding("Hello World", "UTF-8);
+echo mb_check_encoding("Hello World", "UTF-8");
 ```
 
 Запускаем!
 ```
 ./objs/bin/kphp2cpp -M test.php && ./kphp_out/cli
 ```
-!`-M` это cli-mode, чтобы не запускать http сервер.
-
 Ура! Мы успешно добавили новые функции в рантайм kphp!
 
 ### !!! Важно !!!
-Не все так просто. Мы очень быстро их добавили (лишь бы работало). Теперь когда мы убедились, что все работает, но нужны другие типы -`mb_check_enсoding` в качестве параметра данных может принимать массив строк или `null`, нужно это придусмотреть. Причем поведение функции должно быть идентично php (дажа если поведение в php нелогично). Аналогично для `mb_convert_encoding`, которая может и принимать и возвращать строку или массив строк.
+Не все так просто. Мы очень быстро их добавили (лишь бы работало). Теперь когда мы убедились, что все работает нужно переделать некоторые моменты.
 
-Также `mbstring` это расширение kphp, которое в `php-src`, собирается и подключается только если указан определенный флаг при компиляции. Нужно сделать и это.
+1. И было бы хорошим тоном разграничивать логичное поведение функции и ее поведение в php. Например в php `mb_convert_encoding` если при конвертации есть символы, которых нет в выходной кодировке, то их байты заменяются на 0x63 ('?' в ASCII). Это поведение уникально, поэтому лучше ее реализовать в `f$` функции, а всю логику вынести в обычную функцию.
+
+2. Нужны другие типы - `mb_check_enсoding` в качестве параметра данных может принимать массив строк или `null`, нужно это придусмотреть. Причем поведение функции должно быть идентично php (дажа если поведение в php нелогично). Аналогично для `mb_convert_encoding`, которая может и принимать и возвращать строку или массив строк.
+
+3. `mbstring` это расширение kphp, которое в `php-src`, собирается и подключается только если указан определенный флаг при компиляции. Нужно сделать и это.
+
+4. Обработка разных версий php.
+
+### Хороший тон
+1. Используйте `const &` для входных параметров (если они не меняются)
+2. Разграничевание логики и поведения как в php (используйте `static`):
+```сpp
+static bool check_enсoding(const char *value, const char *encoding) {
+	// ...
+}
+
+bool f$mb_check_encoding(const string &value, const string &encoding) {
+	const char *c_encoding = encoding.c_str();
+	const char *c_value = value.c_str();
+	bool res = check_enсoding(c_value, c_encoding);
+	// process differences in php
+	return res
+}
+```
+3. Используйте `noexcept` если функция не вызывает исключений:
+```сpp
+static bool check_enсoding(const char *value, const char *encoding) {
+	// ...
+}
+
+bool f$mb_check_encoding(const string &value, const string &encoding) noexcept {
+	const char *c_encoding = encoding.c_str();
+	const char *c_value = value.c_str();
+	bool res = check_enсoding(c_value, c_encoding);
+	// process differences in php
+	return res
+}
+```
 
 ### Типы
+`mb_check_encoding` в качестве переменной данных может принимать `string|array|null` (судя по php-интерфейсу). В C++ мы не можем записывать типы так, поэтому заменяем тип на `mixed` (смешанный). Про `mixed` можно почитать аналагично типу `string`. Параметр кодировки `mb_check_encoding` (судя по php-интерфейсу) имеет тип `?string`, что нужно заменить на `Optional<string>`. Про `Optional` можно почитать аналагично типу `string`. Главная информация в том, что `mixed` мы можем проверять на любой тип через `.is_<тип>` и попытаться привести к любому типу через `.to_<тип>`. Из `Optional` можно достать значение через `.val()`.
+```сpp
+static bool check_enсoding(const char *value, const char *encoding) {
+	// ...
+}
 
-### Флаги
+bool f$mb_check_encoding(const mixed &value, const Optional<string> &encoding) noexcept {
+	if (encoding.is_null() || value.is_null()) return 1;
+	const char *c_encoding = encoding.val().c_str();
+	if (value.is_string()) { // ... }
+	if (value.is_array()) { // ... }
+	return 1;
+}
+```
+
+### Расширение
+`mbstring` это расширение php, его нужно включить через флаг при сборке с `cmake`. Пусть флагом будет - `MBFL` Чтобы это сделать нужно всего 3 шага:
+1. `cmake/external-libraries.cmake` - добавить флаг в cmake и пробросить его в компилятор:
+```cmake
+option(DOWNLOAD_MISSING_LIBRARIES "download and build missing libraries if needed" OFF)
+option(MBFL "build mbstring" OFF)
+# ...
+```
+3. `runtime/runtime.cmake` - включить файлы в сборку по флагу
+```cmake
+# ...
+if (MBFL)
+	prepend(KPHP_RUNTIME_MBSTRING_SOURCES
+		mbstring.cpp)
+endif()
+# ...
+prepend(KPHP_RUNTIME_SOURCES ${BASE_DIR}/runtime/
+        ${KPHP_RUNTIME_MBSTRING_SOURCES}
+# ...
+```
+
+В моем случае некоторый функции из `mbstring.cpp` использовались в самом kphp (не в рантайме). Это значит, что мне нужно всегда собирать `mbstring.cpp`, но не собирать большинство функции по флагу. Чтобы это сделать нужно 3 шага:
+1. `cmake/external-libraries.cmake` - добавить флаг в cmake и пробросить его в компилятор:
+```cmake
+option(DOWNLOAD_MISSING_LIBRARIES "download and build missing libraries if needed" OFF)
+option(MBFL "build mbstring" OFF)
+# ...
+```
+2. `compiler/compiler-settings.cpp` - пробросить флаг дальше из компилятора в рантайм:
+```cpp
+void CompilerSettings::init() {
+	// ...
+	std::stringstream ss;
+	#ifdef MBFL
+	ss << " -DMBFL ";
+	#endif
+	// ...
+```
+3. `runtime/mbstring.*` - через `#ifdef` отслеживать флаг из cmake:
+```cpp
+#ifdef MBFL
+bool f$mb_check_encoding(const mixed &value, const Optional<string> &encoding) noexcept;
+#endif
+```
+
+### Обработка разных версий php
+В разработке...
+
+### Изменение подключаемых библиотек
+Все работает. Библиотека линкуется. Но было бы хорошо, если не нужно было бы ее устанавливать самому, чтобы kphp по флагу `MBFL` скачивал библиотеку, собирал и линковал. Тогда не придется писать новые доки для установки библиотеки + можно заморозить версию библиотеки на форке. Разберем [мой форк](https://github.com/andreylzmw/libmbfl/commit/ed66e4e03afb7cc85385974c00542505be4556e8) `libmbfl`. Мне не повезло с библиотекой, она с 1992 года не обновляется, нет документации, нет статей с ее использование и билдится она по-своему. Чтобы kphph сам скачивал, билдил и линковал библиотеку нужно выполнить шагов:
+1. 
+
+
+
+
+# Шпаргалка
 
