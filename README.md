@@ -141,12 +141,11 @@ function mb_convert_encoding(array|string $string, string $to_encoding, array|st
 #### Добавить код с интерфейсом (h)
 Все модули рантайма находятся в папке `runtime`. Наши функции являются частью расширения `mbstring` для php. Оказывается уже есть файлик `mbstring.h`. Давайте откроем и посмотрим:
 ![Снимок экрана 2023-06-02 в 23 27 45](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/05f5d197-ed8b-46ab-a3cf-064152d5c3b9)
-Оказывается mb_check_encoding уже реализована, странно.
 
-Оказывается mb_check_encoding уже реализована, странно. Посмотрим cpp файл:
+Оказывается mb_check_encoding уже реализована, странно. Почему имя функций начинается на `f$`? Так kphp понимате какие функции искать в `builtin-functions/_functions.txt`. Посмотрим cpp файл:
 ![Снимок экрана 2023-06-02 в 22 25 11](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/223d3e0a-dab2-4794-b2f1-b234bbdd2f75)
 
-Хм, функция уже реализована, но все работает только для двух кодировок (UTF-8 и Windows-1251). Ничего страшного, теперь мы покажем им все кодировки! (о последсвиях расскажу в конце). Dидим, что входными параметрами являются переменные типа `string`. Ловушка! Это не string из I/O! Это string из kphp! Где про нее почитать? Все типы включаются из `runtime/kphp_core.h`. Смотрим внутри: ![Снимок экрана 2023-06-02 в 22 53 46](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/ef3c256a-8b39-4dd6-99ef-4e0fc279dbdb). Поменяем интерфейс `mb_check_encoding`:
+Хм, функция уже реализована, но все работает только для двух кодировок (UTF-8 и Windows-1251). Ничего страшного, теперь мы покажем им все кодировки! (о последсвиях расскажу в конце). Видим, что входными параметрами являются переменные типа `string`. Ловушка! Это не string из I/O! Это string из kphp! Где про нее почитать? Все типы включаются из `runtime/kphp_core.h`. Смотрим внутри: ![Снимок экрана 2023-06-04 в 19 47 38](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/bc389423-86ac-4115-b77e-7b6bcbc56d16). Поменяем интерфейс `mb_check_encoding`:
 ```cpp
 bool f$mb_check_encoding(const string &value, const string &encoding);
 ```
