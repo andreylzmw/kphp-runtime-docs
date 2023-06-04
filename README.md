@@ -333,12 +333,86 @@ bool f$mb_check_encoding(const mixed &value, const Optional<string> &encoding) n
 Когда kphp будет билдить библиотеку он будет ожидать специальные таргеты, чтобы знать какой код скопировать в `include` и где находится собранная библиотека.
 Название библиотеки `libmbfl`, тогда kphp будет ожидать следующие таргеты:
 1. libmbfl
-2. libmbfl-includecopy
+2. libmbfl_ALL_SOURCES
+3. libmbfl-includecopy
 
 Разберем по отдельности каждый, начнем с `libmbfl`.
 
-#### Указать ссылку на репозиторий в `cmake`
+#### libmbfl
+```cmake
+project(libmbfl
+        VERSION 1.0.0
+        DESCRIPTION "libmbfl"
+        HOMEPAGE_URL "https://github.com/andreylzmw/libmbfl")
+# ...
+set_target_properties(libmbfl PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${OBJS_DIR})
+# ...
+set_target_properties(libmbfl PROPERTIES PUBLIC_HEADER "libmbfl/mbfilter.h")
+# ... 
+add_dependencies(libmbfl libmbfl-includecopy)
+# ...
+install(TARGETS libmbfl
+        COMPONENT KPHP
+        LIBRARY DESTINATION "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}"
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}"
+        PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}/kphp/liblibmbfl")
+# ...
+add_library(libmbfl STATIC ${libmbfl_ALL_SOURCES})
+add_library(vk::libmbfl ALIAS libmbfl)
 
+```
 
-# Шпаргалка
+#### libmbfl_ALL_SOURCES
+```cmake
+set(libmbfl_ALL_SOURCES
+    filters/mbfilter_iso2022_jp_ms.c
+	filters/mbfilter_iso8859_14.c
+	filters/mbfilter_iso8859_6.c
+	filters/mbfilter_sjis_mobile.c
+	filters/mbfilter_koi8r.c
+	filters/mbfilter_cp850.c
+	filters/mbfilter_euc_jp.c
+# ...
+add_library(libmbfl STATIC ${libmbfl_ALL_SOURCES})
+# ...
+```
+
+#### libmbfl-includecopy
+```cmake
+add_dependencies(libmbfl libmbfl-includecopy)
+# ...
+add_custom_command(
+        COMMAND cp -R
+                ${CMAKE_CURRENT_SOURCE_DIR}/mbfl
+                ${CMAKE_CURRENT_SOURCE_DIR}/include/kphp/libmbfl
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/include/kphp/libmbfl/mbfl)
+
+add_custom_command(
+        COMMAND cp -R
+                ${CMAKE_CURRENT_SOURCE_DIR}/filters
+                ${CMAKE_CURRENT_SOURCE_DIR}/include/kphp/libmbfl
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/include/kphp/libmbfl/filters)
+
+add_custom_command(
+        COMMAND cp -R
+                ${CMAKE_CURRENT_SOURCE_DIR}/nls
+                ${CMAKE_CURRENT_SOURCE_DIR}/include/kphp/libmbfl
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/include/kphp/libmbfl/nls)
+# ...
+add_custom_target(libmbfl-includecopy ALL DEPENDS 
+	include/kphp/libmbfl/mbfl/mbfilter.h)
+# ...
+```
+
+## Тесты
+### cpp тесты
+cpp тесты это тесты реализации.
+
+### php тесты
+php тесты это тесты-сравнения с php.
+
+### pull_request
+Мы добавили новые функции, учли все варианты поведения, добавили тесты. Теперь нужно грамнотно оформить pull_request. Не поверите, но есть одно единственное правило, на котором я погарел. **ломать не строить** - нужно понимать, что целевым проектом для kphp является vk. vk это монолит из более 9 миллионов строк кода на php. Если вы заменяете какие-то функции своими, которые работают правильно (как я заменил все функции mbstring своими), то разработчикам vk нужно будет переписывать места использования этих функций, что им не нужно, так как vk работает и без ваших обновленных функция, поэтому лучшим вариантом является добаление новых функций по флагам. Таким образом
+
+# Документация
 
