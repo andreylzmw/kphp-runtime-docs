@@ -317,6 +317,11 @@ bool f$mb_check_encoding(const mixed &value, const Optional<string> &encoding) n
 #endif
 ```
 
+Теперь при сборке можно указать:
+```
+cmake .. -DMBFL=On
+```
+
 ### Обработка разных версий php
 В разработке...
 
@@ -406,13 +411,129 @@ add_custom_target(libmbfl-includecopy ALL DEPENDS
 
 ## Тесты
 ### cpp тесты
-cpp тесты это тесты реализации.
+cpp тесты это тесты реализации, запускаются через сtest. В них мы заранее должны знать что должна вернуть функция и просто проверять. Добавить их просто. Для каждой функции отдельный тест. cpp тесты находятся в `tests/cpp/runtime/`. Чтобы их добавить создаем `mbstring-test.cpp` внутри `tests/cpp/runtime/`:
+```cpp
+#include <gtest/gtest.h>
+#include "runtime/mbstring/mbstring.h"
+
+// Note: all tests written for php8.3
+
+/* TEST ASCII DATA */
+const string &ASCII_STRING = string("sdf234");
+const array<string> &ASCII_ARRAY = array<string>::create(string("234"), string("wef"));
+const string &ASCII_ENCODING = string("ASCII");
+
+/* TEST WINDOWS1251 DATA */
+const string &WINDOWS1251_STRING = string("sdfw3234ыва");
+const array<string> &WINDOWS1251_ARRAY = array<string>::create(string("234"), string("wef"), string("ыва"));
+const string &WINDOWS1251_ENCODING = string("Windows-1251");
+
+/* TEST UTF8 DATA */
+const string &UTF8_STRING = string("Өd5па");
+const array<string> &UTF8_ARRAY = array<string>::create(string("sdС‹Р°"), string("wef"), string("ыва"), string("Ө"), string("Ä°nanÃ§ EsaslarÄ±"));
+const string &UTF8_ENCODING = string("UTF-8");
+
+#ifdef MBFL
+
+TEST(mbstring_test, test_mb_check_encoding) {
+	/* TEST ASCII ENCODING */
+	ASSERT_TRUE(f$mb_check_encoding(ASCII_STRING, ASCII_ENCODING));
+	ASSERT_TRUE(f$mb_check_encoding(ASCII_ARRAY, ASCII_ENCODING));
+	ASSERT_FALSE(f$mb_check_encoding(WINDOWS1251_STRING, ASCII_ENCODING));
+	ASSERT_FALSE(f$mb_check_encoding(WINDOWS1251_ARRAY, ASCII_ENCODING));
+	ASSERT_FALSE(f$mb_check_encoding(UTF8_STRING, ASCII_ENCODING));
+	ASSERT_FALSE(f$mb_check_encoding(UTF8_ARRAY, ASCII_ENCODING));
+
+	/* TEST WINDOWS1251 ENCODING */
+	ASSERT_TRUE(f$mb_check_encoding(WINDOWS1251_STRING, WINDOWS1251_ENCODING));
+	ASSERT_TRUE(f$mb_check_encoding(WINDOWS1251_ARRAY, WINDOWS1251_ENCODING));
+	ASSERT_TRUE(f$mb_check_encoding(ASCII_STRING, WINDOWS1251_ENCODING));
+	ASSERT_TRUE(f$mb_check_encoding(ASCII_ARRAY, WINDOWS1251_ENCODING));
+	ASSERT_TRUE(f$mb_check_encoding(UTF8_STRING, WINDOWS1251_ENCODING));
+	ASSERT_TRUE(f$mb_check_encoding(UTF8_ARRAY, WINDOWS1251_ENCODING));
+
+	/* TEST UTF8 ENCODING */
+	ASSERT_TRUE(f$mb_check_encoding(UTF8_STRING, UTF8_ENCODING));
+	ASSERT_TRUE(f$mb_check_encoding(UTF8_ARRAY, UTF8_ENCODING));
+	ASSERT_TRUE(f$mb_check_encoding(ASCII_STRING, UTF8_ENCODING));
+	ASSERT_TRUE(f$mb_check_encoding(ASCII_ARRAY, UTF8_ENCODING));
+	ASSERT_TRUE(f$mb_check_encoding(WINDOWS1251_STRING, UTF8_ENCODING));
+	ASSERT_TRUE(f$mb_check_encoding(WINDOWS1251_ARRAY, UTF8_ENCODING));
+}
+
+TEST(mbstring_test, test_mb_convert_encoding) {
+	/* input is string, encoding is string */
+	ASSERT_STREQ(f$mb_convert_encoding(ASCII_STRING, WINDOWS1251_ENCODING, ASCII_ENCODING).to_string().c_str(), ASCII_STRING.c_str());
+	ASSERT_STREQ(f$mb_convert_encoding(UTF8_STRING, UTF8_ENCODING, UTF8_ENCODING).to_string().c_str(), UTF8_STRING.c_str());
+
+	/* input is string, encoding is array of strings */
+	ASSERT_STREQ(f$mb_convert_encoding(ASCII_STRING, {WINDOWS1251_ENCODING, UTF8_ENCODING}, ASCII_ENCODING).to_string().c_str(), {ASCII_STRING.c_str(), UTF8_STRING.c_str()});
+}
+
+#endif
+```
+Сборка тестов находится в `tests/cpp/runtime/runtime-tests.cmake`, нужно добавить cpp файл в `RUNTIME_TESTS_SOURCES`:
+```cmake
+prepend(RUNTIME_TESTS_SOURCES ${BASE_DIR}/tests/cpp/runtime/
+		# ...
+		mbstring-test.cpp
+		# ...
+```
+Теперь когда мы запустим ctest:
+```
+cd build && ctest -j$(nproc)
+```
+Мы увидим:
+```
+...
+242/261 Test #242: mbstring_test.test_mb_check_encoding .......................................   Passed    0.24 sec
+243/261 Test #243: mbstring_test.test_mb_convert_encoding .....................................   Passed    0.23 sec
+...
+```
 
 ### php тесты
-php тесты это тесты-сравнения с php.
+В разработке... (жду ответа от Вадима)
 
 ### pull_request
-Мы добавили новые функции, учли все варианты поведения, добавили тесты. Теперь нужно грамнотно оформить pull_request. Не поверите, но есть одно единственное правило, на котором я погарел. **ломать не строить** - нужно понимать, что целевым проектом для kphp является vk. vk это монолит из более 9 миллионов строк кода на php. Если вы заменяете какие-то функции своими, которые работают правильно (как я заменил все функции mbstring своими), то разработчикам vk нужно будет переписывать места использования этих функций, что им не нужно, так как vk работает и без ваших обновленных функция, поэтому лучшим вариантом является добаление новых функций по флагам. Таким образом
+Мы добавили новые функции, учли все варианты поведения, добавили тесты. Теперь нужно грамнотно оформить pull_request. Не поверите, но есть одно единственное правило, на котором я погарел. **ломать не строить** - нужно понимать, что целевым проектом для kphp является vk. vk это монолит из более 9 миллионов строк кода на php. Если вы заменяете какие-то функции своими, которые работают правильно (как я заменил все функции mbstring своими), то разработчикам vk нужно будет переписывать места использования этих функций, что им не нужно, так как vk работает и без ваших обновленных функций, поэтому лучшим вариантом является добавление новых (уже существующих) функций по флагам. Таким образом выигрывают все. Разработки vk не переписывают код и другие пользователи kphp могут получить ваш функционал для своих проектов.
+
+Что касается остального правил особо нет - пишите, что вы добавили. Можете сделать ревью проще, прикрепив ссылки на документацию, откуда вы взяли функцию, которую реализовали. Если есть какие-то ньюансы (по типо того, что вы используете свою модифицированную библиотеку) тоже просто пишите об этом.
 
 # Документация
+Это своего рода шпаргалка, возникает вопрос как что-либо сделать? Смотри сдесь. Не нашел - мой telegram: @andreylzmw. Быстро отвечу.
+
+Добавить новую функцию в рантайм (пример - `void func(void)`):
+1. `builtin-functions/_functions.txt`:
+```txt
+function func();
+```
+2. `runtime/func/func.h`:
+```cpp
+#include "runtime/kphp_core.h"
+
+void func(void);
+```
+3. `runtime/func/func.c`:
+```cpp
+#include "func.h"
+
+void func(void) {
+	// ...
+}
+```
+4. `runtime/runtime.cmake`:
+```cmake
+
+```
+
+Типы:
+- `?тип` = `Optional<тип>`
+- `int` = `int64_t`
+
+Функции типов:
+- `Optional`
+- `mixed`
+
+
+
 
