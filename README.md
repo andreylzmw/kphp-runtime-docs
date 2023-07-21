@@ -509,7 +509,57 @@ cd build && ctest -j$(nproc)
 ```
 
 ### php тесты
-В разработке...
+php тесты это тесты, которые сравнивают результат работы php и kphp, запускаются через `tests/kphp_tester.py`. В них мы пишем php код который должен вести себя ожидаемого в kphp. php тесты находятся в `tests/phpt/`. Чтобы их добавить создаем папку `mbstring` внутри `tests/phpt/`. Внутри создаем отдельный файл для каждой функции в формате `001_*****.php`, `002_*****.php` и тд, где `*****` - названия функций. В нашем случае:
+`tests/phpt/mbstring/001_mb_convert_encoding.php`:
+```php
+@ok
+<?php
+
+function mb_convert_encoding_not_utf_8() {
+  $str = "Somebody was told: F$#$)UT#*HD]";
+  var_dump(mb_convert_encoding($str, "UTF-7", "EUC-JP"));
+}
+
+# If mbstring.language is "Japanese", "auto" is expanded to "ASCII,JIS,UTF-8,EUC-JP,SJIS"
+function test_mb_convert_encoding_auto() {
+  $str = "Somebody was told: F$#$)UT#*HD]";
+  var_dump(mb_convert_encoding($str, "EUC-JP", "auto"));
+}
+
+mb_convert_encoding_not_utf_8();
+test_mb_convert_encoding_auto();
+```
+
+`tests/phpt/mbstring/002_mb_check_encoding.php`:
+```php
+@ok
+<?php
+
+function mb_check_encoding_utf_8() {
+  $str = "The leading horse is white, the second horse is red, the third one is black, the last one is green";
+  var_dump(mb_check_encoding($str, "UTF-8"));
+}
+
+function mb_check_encoding_not_utf_8() {
+  $str = "The leading horse is white, the second horse is red, the third one is black, the last one is green";
+  var_dump(mb_check_encoding($str, "base64"));
+}
+
+mb_check_encoding_utf_8();
+mb_check_encoding_not_utf_8();
+```
+
+На первой строчке мы указываем ожидаемое поведение kphp для этого теста, например:
+- `@ok`, если kphp должен успешно скомпилировать этот код
+- `@kphp_should_fail`, если kphp не должен скомпилировать этот код и это ожидаемо
+- `@kphp_should_warn`, если kphp не должен скомпилировать этот код и это ожидаемо + должен вывести ворнинг
+
+Запустим тесты:
+`./kphp_tester.py phpt/mbstring/001_mb_convert_encoding.php`:
+![Снимок экрана 2023-07-21 в 23 50 08](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/c2b6f7eb-87b6-4f8f-8dd5-b4aba12051f8)
+
+`./kphp_tester.py phpt/mbstring/002_mb_check_encoding.php`:
+![Снимок экрана 2023-07-21 в 23 49 42](https://github.com/andreylzmw/kphp-runtime-docs/assets/110744283/3a800dcf-2b78-4547-b0ec-2c5df481a4bb)
 
 ### pull_request
 Мы добавили новые функции, учли все варианты поведения, добавили тесты. Теперь нужно грамнотно оформить pull_request. Не поверите, но есть одно единственное правило, на котором я погарел. **ломать не строить** - нужно понимать, что целевым проектом для kphp является vk. vk это монолит из более 9 миллионов строк кода на php. Если вы заменяете какие-то функции своими, которые работают правильно (как я заменил все функции mbstring своими), то разработчикам vk нужно будет переписывать места использования этих функций, что им не нужно, так как vk работает и без ваших обновленных функций, поэтому лучшим вариантом является добавление новых (уже существующих) функций по флагам. Таким образом выигрывают все. Разработки vk не переписывают код и другие пользователи kphp могут получить ваш функционал для своих проектов.
